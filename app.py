@@ -7,56 +7,204 @@ import streamlit as st
 from pikepdf import PasswordError
 
 # --- 1. ตั้งค่าหน้าจอและ CSS สไตล์มืออาชีพ (Green Gradient) ---
+import io
+import re
+import pandas as pd
+import pikepdf
+import pdfplumber
+import streamlit as st
+from pikepdf import PasswordError
+
+# --- 1. ตั้งค่าหน้าจอและหน้าตาเว็บ (Custom CSS) ---
 st.set_page_config(page_title="STM to Excel", page_icon="📑", layout="centered")
 
+# CSS เพื่อจัดการ Layout ให้เหมือนรูปภาพ
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        * { font-family: 'Kanit', sans-serif; }
+        /* พื้นหลังเว็บแบบไล่สีอ่อนๆ */
         .stApp {
-            background-color: #f4f7f6;
-            background-image: radial-gradient(circle at top right, #e8f5e9, transparent),
-                              radial-gradient(circle at bottom left, #e8f5e9, transparent);
+            background-color: #e9f5ee;
+            background-image: radial-gradient(circle at center, #f0f9f4 0%, #e9f5ee 100%);
         }
-        header, footer { visibility: hidden; }
 
-        /* ส่วนหัวสีเขียวแบบที่คุณชอบ */
-        .custom-header {
-            background: linear-gradient(135deg, #13803a 0%, #0b5d2a 100%);
+        /* ซ่อนส่วนประกอบเดิมของ Streamlit */
+        header, footer, .stDeployButton { visibility: hidden; }
+        
+        /* จัดการ Container หลัก */
+        .block-container {
+            padding-top: 2rem;
+            max-width: 550px;
+        }
+
+        /* การตกแต่ง Card */
+        .main-card {
+            background: white;
+            border-radius: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.05);
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        /* ส่วนหัวสีเขียวเข้ม (K-Bank Style) */
+        .card-header {
+            background-color: #136332;
             padding: 40px 20px;
             text-align: center;
             color: white;
-            border-radius: 24px;
-            margin-bottom: 25px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
         }
-        .custom-header i { font-size: 3.5rem; margin-bottom: 15px; }
+        .card-header i { font-size: 45px; margin-bottom: 15px; }
+        .card-header h2 { font-family: 'Kanit'; font-weight: 500; margin: 0; font-size: 28px; }
+        .card-header p { font-family: 'Kanit'; opacity: 0.9; font-size: 14px; margin-top: 5px; }
 
-        /* ปรับแต่งปุ่มกด */
+        /* ส่วนเนื้อหาใน Card */
+        .card-content { padding: 40px; }
+
+        /* ตกแต่ง Step Numbers */
+        .step-label {
+            display: flex;
+            align-items: center;
+            font-family: 'Kanit';
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 15px;
+        }
+        .step-circle {
+            background-color: #136332;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            margin-right: 12px;
+        }
+
+        /* ปรับแต่ง Input และ File Uploader */
+        .stFileUploader section {
+            border: 1px solid #ddd !important;
+            border-radius: 12px !important;
+            padding: 5px !important;
+        }
+        .stTextInput input {
+            border-radius: 12px !important;
+            border: 1px solid #ddd !important;
+            padding: 12px !important;
+        }
+
+        /* ปุ่มสีเขียวเต็มความกว้าง */
         div.stButton > button {
-            background: linear-gradient(135deg, #13803a 0%, #0b5d2a 100%) !important;
+            background-color: #136332 !important;
             color: white !important;
             border: none !important;
             border-radius: 12px !important;
-            padding: 20px !important;
+            padding: 22px !important;
             width: 100% !important;
-            font-size: 1.1rem !important;
+            font-family: 'Kanit' !important;
+            font-size: 16px !important;
             font-weight: 500 !important;
-            box-shadow: 0 8px 15px rgba(19, 128, 58, 0.2) !important;
+            margin-top: 10px !important;
+            box-shadow: 0 4px 12px rgba(19, 99, 50, 0.2) !important;
         }
-
-        .step-number {
-            background: #13803a;
-            color: white;
-            width: 24px; height: 24px;
-            border-radius: 50%;
-            display: inline-flex; align-items: center; justify-content: center;
-            font-size: 0.8rem; margin-right: 10px;
+        div.stButton > button:hover {
+            background-color: #0e4d26 !important;
+            transform: translateY(-1px);
         }
     </style>
     """, unsafe_allow_html=True)
+
+# --- 2. ฟังก์ชันประมวลผล PDF (Logic ของคุณ) ---
+def split_channel_and_detail(text):
+    channels = ["EDC/K SHOP/MYQR", "โอนเข้า/หักบัญชีอัตโนมัติ", "K PLUS", "ตู้เติมเงิน", "Internet/Mobile KK", "K BIZ", "ATM", "BRANCH"]
+    found_channel, detail_part = "-", text
+    for c in channels:
+        if c in text:
+            found_channel = c
+            detail_part = text.replace(c, "").strip()
+            break
+    return found_channel, detail_part
+
+def parse_pdf_content(pdf_stream):
+    all_rows = []
+    date_pattern = re.compile(r'^(\d{2}[-/]\d{2}[-/]\d{2,4})')
+    with pdfplumber.open(pdf_stream) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if not text: continue
+            lines = text.split('\n')
+            current_row = None
+            for line in lines:
+                line = line.strip()
+                date_match = date_pattern.match(line)
+                if date_match:
+                    if current_row: all_rows.append(current_row)
+                    amounts = re.findall(r'[\d,]+\.\d{2}', line)
+                    current_row = [date_match.group(1), "", line, None, None, "-", ""] # Simplified for demo
+                    if len(amounts) >= 1: current_row[4] = amounts[-1]
+                elif current_row:
+                    current_row[2] += " " + line
+            if current_row: all_rows.append(current_row)
+    return all_rows
+
+# --- 3. การสร้างหน้าเว็บตามดีไซน์ในรูป ---
+
+# เริ่มต้น Card
+st.markdown("""
+    <div class="main-card">
+        <div class="card-header">
+            <i class="fa-solid fa-file-invoice-dollar"></i>
+            <h2>STM to Excel</h2>
+            <p>อัปโหลดไฟล์ PDF เพื่อแปลงข้อมูลทันที</p>
+        </div>
+        <div class="card-content">
+""", unsafe_allow_html=True)
+
+# เนื้อหาข้างใน (ใช้ Streamlit Widgets)
+st.markdown('<div class="step-label"><span class="step-circle">1</span> เลือกไฟล์ PDF Statement</div>', unsafe_allow_html=True)
+pdf_file = st.file_uploader("upload", type="pdf", label_visibility="collapsed")
+
+st.markdown('<div style="margin-top:25px;"></div>', unsafe_allow_html=True)
+
+st.markdown('<div class="step-label"><span class="step-circle">2</span> รหัสผ่านไฟล์ (ถ้ามี)</div>', unsafe_allow_html=True)
+password = st.text_input("pass", type="password", placeholder="ระบุรหัสผ่าน", label_visibility="collapsed")
+
+st.markdown('<div style="margin-top:25px;"></div>', unsafe_allow_html=True)
+
+# ปุ่มกด
+if st.button("🪄 แปลงไฟล์และดาวน์โหลด Excel"):
+    if pdf_file:
+        try:
+            with st.spinner("กำลังประมวลผล..."):
+                pdf_bytes = pdf_file.read()
+                with pikepdf.open(io.BytesIO(pdf_bytes), password=password) as pdf:
+                    unlocked_io = io.BytesIO()
+                    pdf.save(unlocked_io)
+                    unlocked_io.seek(0)
+                    data_rows = parse_pdf_content(unlocked_io)
+                    df = pd.DataFrame(data_rows)
+                    
+                    # สร้าง Excel (แบบย่อ)
+                    output = io.BytesIO()
+                    df.to_excel(output, index=False)
+                    output.seek(0)
+                    
+                    st.success("แปลงสำเร็จ!")
+                    st.download_button("ดาวน์โหลดไฟล์ผลลัพธ์", output, file_name="converted.xlsx", use_container_width=True)
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาด: {str(e)}")
+    else:
+        st.warning("กรุณาเลือกไฟล์ก่อน")
+
+# ปิด Card
+st.markdown("""
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- 2. Logic การคำนวณและอ่าน PDF (ปรับปรุงให้ฉลาดขึ้น) ---
 
