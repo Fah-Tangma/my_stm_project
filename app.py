@@ -38,7 +38,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 1. ฟังก์ชันช่วยเหลือ (Utility) =================
+# ================= 2. ฟังก์ชันช่วยเหลือ (คงเดิม) =================
 def split_channel_and_detail(text):
     channels = [
         "EDC/K SHOP/MYQR", "โอนเข้า/หักบัญชีอัตโนมัติ", "K PLUS", "ตู้เติมเงิน / โมบาย แอปพลิ", 
@@ -59,7 +59,7 @@ def str_to_float(val_str):
     try: return float(str(val_str).replace(',', ''))
     except: return None
 
-# ================= 2. Logic การอ่าน PDF (คงเดิมตามของคุณ) =================
+# ================= 3. Logic การอ่าน PDF (คงเดิม) =================
 def parse_pdf_content(pdf_stream):
     all_parsed_rows = []
     bf_keywords = ["ยอดยกมา", "Balance Brought Forward", "Brought Forward"]
@@ -119,52 +119,66 @@ def parse_pdf_content(pdf_stream):
 
         if current_row: all_parsed_rows.append(current_row)
 
+    # กรองข้อมูล
     final_rows = []
     bf_occurrence = 0
     empty_row_buffer = []
-
     def flush_buffer(buffer_list, target_list):
-        if len(buffer_list) == 1:
-            target_list.append(buffer_list[0])
+        if len(buffer_list) == 1: target_list.append(buffer_list[0])
 
     for row in all_parsed_rows:
         desc = str(row[2])
         amount = row[3]
-        is_bf = any(kw in desc for kw in bf_keywords)
-
-        if is_bf:
+        if any(kw in desc for kw in bf_keywords):
             flush_buffer(empty_row_buffer, final_rows)
             empty_row_buffer = []
             bf_occurrence += 1
-            if bf_occurrence <= 1:
-                final_rows.append(row)
+            if bf_occurrence <= 1: final_rows.append(row)
             continue
-
         if amount is not None:
             flush_buffer(empty_row_buffer, final_rows)
             empty_row_buffer = []
             final_rows.append(row)
         else:
-            if row[5] != "-" or row[6] != "":
-                empty_row_buffer.append(row)
-
+            if row[5] != "-" or row[6] != "": empty_row_buffer.append(row)
     flush_buffer(empty_row_buffer, final_rows)
     return final_rows
 
-# ================= 3. ส่วนการแสดงผล (Streamlit UI) =================
-st.title("📑 PDF to Excel Converter")
-st.write("อัปโหลดไฟล์ PDF Statement เพื่อแปลงเป็นไฟล์ Excel")
+# ================= 4. ส่วนการแสดงผล (Improved UI) =================
 
+# --- Sidebar ---
 with st.sidebar:
-    st.header("การตั้งค่า")
-    pdf_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
-    password = st.text_input("รหัสผ่านไฟล์ PDF (ถ้ามี)", type="password")
-    convert_button = st.button("เริ่มการแปลงไฟล์")
+    st.image("https://cdn-icons-png.flaticon.com/512/2306/2306086.png", width=100)
+    st.title("Settings")
+    st.markdown("---")
+    pdf_file = st.file_uploader("1️⃣ อัปโหลดไฟล์ PDF Statement", type="pdf")
+    password = st.text_input("2️⃣ รหัสผ่านไฟล์ (ถ้ามี)", type="password", help="ใส่รหัสผ่านหากไฟล์ PDF ของคุณมีการเข้ารหัส")
+    st.markdown("---")
+    convert_button = st.button("🚀 เริ่มแปลงไฟล์")
+    
+    st.info("""
+    **คำแนะนำ:**
+    - รองรับไฟล์ PDF จากธนาคารชั้นนำ
+    - ระบบจะแยกรายละเอียดช่องทางให้โดยอัตโนมัติ
+    """)
+
+# --- Main Content ---
+st.title("📑 PDF Statement to Excel Converter")
+st.markdown("เครื่องมือช่วยแปลงไฟล์ Statement จาก PDF เป็น Excel เพื่อการทำบัญชีที่ง่ายขึ้น")
+
+if not pdf_file:
+    # แสดงคำแนะนำการใช้งานเมื่อยังไม่ได้อัปโหลดไฟล์
+    st.info("กรุณาเลือกไฟล์ PDF ที่แถบด้านซ้ายเพื่อเริ่มต้น")
+    cols = st.columns(3)
+    cols[0].metric("1. Upload", "เลือกไฟล์")
+    cols[1].metric("2. Process", "รอระบบอ่านค่า")
+    cols[2].metric("3. Download", "รับไฟล์ Excel")
 
 if convert_button and pdf_file:
     try:
-        with st.spinner("กำลังประมวลผล..."):
+        with st.status("กำลังวิเคราะห์ข้อมูลใน PDF...", expanded=True) as status:
             # 1. ปลดล็อก PDF
+            st.write("🔓 กำลังปลดล็อกและอ่านไฟล์...")
             pdf_bytes = pdf_file.read()
             with pikepdf.open(io.BytesIO(pdf_bytes), password=password) as pdf:
                 unlocked_io = io.BytesIO()
@@ -172,44 +186,55 @@ if convert_button and pdf_file:
                 unlocked_io.seek(0)
                 
                 # 2. อ่านข้อมูล
+                st.write("🔍 กำลังดึงข้อมูลรายการธุรกรรม...")
                 data_rows = parse_pdf_content(unlocked_io)
-                header = ["วันที่", "เวลา", "รายการ", "ถอนเงิน/ฝากเงิน", "ยอดคงเหลือ", "ช่องทาง", "รายละเอียด"]
+                header = ["วันที่", "เวลา", "รายการ", "ยอดเงิน", "ยอดคงเหลือ", "ช่องทาง", "รายละเอียด"]
                 df = pd.DataFrame(data_rows, columns=header)
                 
                 # 3. จัดรูปแบบข้อมูล
                 df['วันที่'] = pd.to_datetime(df['วันที่'], format='%d-%m-%y', errors='coerce')
+                
+                # 4. คำนวณยอดเบื้องต้นเพื่อโชว์สรุป
+                total_rows = len(df)
+                deposits = df[df['ยอดเงิน'] > 0]['ยอดเงิน'].sum()
+                withdrawals = df[df['ยอดเงิน'] < 0]['ยอดเงิน'].sum()
 
-                # 4. สร้าง Excel
+                # 5. สร้าง Excel ใน Memory
                 output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter', datetime_format='mm/dd/yyyy') as writer:
+                with pd.ExcelWriter(output, engine='xlsxwriter', datetime_format='dd/mm/yyyy') as writer:
                     df.to_excel(writer, index=False, sheet_name='Statement')
                     workbook, worksheet = writer.book, writer.sheets['Statement']
-                    
-                    date_fmt = workbook.add_format({'num_format': 'mm/dd/yyyy', 'align': 'left'})
-                    num_fmt = workbook.add_format({'num_format': '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)'})
-
-                    worksheet.set_column('A:A', 12, date_fmt)
-                    worksheet.set_column('D:E', 18, num_fmt)
-                    worksheet.set_column('B:B', 10)
-                    worksheet.set_column('C:C', 25)
-                    worksheet.set_column('F:G', 45)
-                
+                    num_fmt = workbook.add_format({'num_format': '#,##0.00'})
+                    worksheet.set_column('A:A', 12)
+                    worksheet.set_column('D:E', 15, num_fmt)
+                    worksheet.set_column('F:G', 40)
                 output.seek(0)
                 
-                # 5. แสดงผลและปุ่มดาวน์โหลด
-                st.success("✅ แปลงไฟล์สำเร็จ!")
-                st.dataframe(df.head(20)) # โชว์ตัวอย่าง 20 แถว
-                
-                st.download_button(
-                    label="📥 ดาวน์โหลดไฟล์ Excel",
-                    data=output,
-                    file_name=f"{pdf_file.name.split('.')[0]}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            status.update(label="✅ ประมวลผลสำเร็จ!", state="complete", expanded=False)
+
+        # --- ส่วนแสดงผลลัพธ์ ---
+        st.success("🎉 แปลงข้อมูลสำเร็จเรียบร้อยแล้ว!")
+        
+        # แสดง Metrics สรุป
+        m1, m2, m3 = st.columns(3)
+        m1.metric("จำนวนรายการ", f"{total_rows} รายการ")
+        m2.metric("ยอดเงินเข้าทั้งหมด", f"{deposits:,.2f} บาท")
+        m3.metric("ยอดเงินออกทั้งหมด", f"{abs(withdrawals):,.2f} บาท", delta_color="inverse")
+
+        # ส่วนปุ่มดาวน์โหลด (เด่นชัด)
+        st.download_button(
+            label="📥 ดาวน์โหลดไฟล์ Excel (Click here to Download)",
+            data=output,
+            file_name=f"Converted_{pdf_file.name.split('.')[0]}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # แสดงตัวอย่างตาราง
+        st.subheader("👀 ตัวอย่างข้อมูล (Preview 20 rows)")
+        st.dataframe(df.head(20), use_container_width=True, height=400)
 
     except PasswordError:
-        st.error("❌ รหัสผ่านไม่ถูกต้อง")
+        st.error("❌ รหัสผ่านไฟล์ PDF ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
     except Exception as e:
-        st.error(f"❌ เกิดข้อผิดพลาด: {str(e)}")
-elif convert_button and not pdf_file:
-    st.warning("⚠️ กรุณาเลือกไฟล์ PDF ก่อนกดปุ่ม")
+        st.error(f"❌ เกิดข้อผิดพลาดระหว่างประมวลผล: {str(e)}")
+        st.info("คำแนะนำ: ตรวจสอบว่าไฟล์ PDF เป็นรูปแบบ Statement มาตรฐานของธนาคารหรือไม่")
