@@ -7,7 +7,212 @@ import streamlit as st
 from pikepdf import PasswordError
 
 # ตั้งค่าหน้าเว็บ Streamlit
-st.set_page_config(page_title="PDF Statement Converter", layout="wide")
+import streamlit as st
+
+st.set_page_config(
+    page_title="PDF Statement Converter",
+    page_icon="📄",
+    layout="wide"
+)
+
+# ---------- CSS ----------
+st.markdown("""
+<style>
+
+.stApp{
+    background:#0E1117;
+}
+
+.block-container{
+    max-width:1500px;
+    padding-top:30px;
+}
+
+.card{
+    background:#1A1D24;
+    padding:25px;
+    border-radius:18px;
+    border:1px solid #2C313C;
+}
+
+.title{
+    font-size:42px;
+    font-weight:700;
+}
+
+.subtitle{
+    color:#B0B3B8;
+    margin-bottom:20px;
+}
+
+div[data-testid="stMetric"]{
+    background:#1A1D24;
+    border-radius:15px;
+    padding:18px;
+}
+
+.stButton>button{
+    width:100%;
+    height:55px;
+    border-radius:12px;
+    background:#3B82F6;
+    color:white;
+    font-size:18px;
+    font-weight:bold;
+}
+
+.stDownloadButton>button{
+    width:100%;
+    height:55px;
+    border-radius:12px;
+    background:#16A34A;
+    color:white;
+    font-size:18px;
+    font-weight:bold;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- HEADER ----------
+
+st.markdown("""
+<div class='title'>
+📄 PDF Statement Converter
+</div>
+
+<div class='subtitle'>
+แปลง Bank Statement เป็น Excel รองรับ PDF ที่มี Password
+</div>
+""", unsafe_allow_html=True)
+
+st.divider()
+
+left, right = st.columns([1,2])
+
+# ============================
+# LEFT PANEL
+# ============================
+
+with left:
+
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    st.subheader("📂 Upload PDF")
+
+    uploaded_file = st.file_uploader(
+        "",
+        type=["pdf"]
+    )
+
+    password = st.text_input(
+        "🔒 Password (ถ้ามี)",
+        type="password"
+    )
+
+    st.write("")
+
+    if st.button("🚀 Convert to Excel"):
+
+        progress = st.progress(0)
+
+        for i in range(100):
+            progress.progress(i+1)
+
+        st.success("แปลงไฟล์สำเร็จ")
+
+    st.write("")
+
+    st.markdown("### Status")
+
+    if uploaded_file:
+
+        st.success("PDF Loaded")
+
+        if password:
+            st.success("Password Entered")
+
+    else:
+
+        st.info("Waiting for PDF")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ============================
+# RIGHT PANEL
+# ============================
+
+with right:
+
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    st.subheader("📑 Preview")
+
+    if uploaded_file:
+
+        st.info("สามารถแสดงหน้าแรกของ PDF ได้ตรงนี้")
+
+    else:
+
+        st.empty()
+
+        st.markdown("""
+
+        <div style="height:320px;
+                    border:2px dashed gray;
+                    border-radius:15px;
+                    display:flex;
+                    justify-content:center;
+                    align-items:center;
+                    color:gray;
+                    font-size:22px;">
+
+        Upload PDF เพื่อแสดงตัวอย่าง
+
+        </div>
+
+        """, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.write("")
+
+# ============================
+# METRICS
+# ============================
+
+c1,c2,c3,c4 = st.columns(4)
+
+c1.metric("Transactions","521")
+c2.metric("Debit","245")
+c3.metric("Credit","276")
+c4.metric("Pages","18")
+
+st.write("")
+
+# ============================
+# DATA PREVIEW
+# ============================
+
+st.subheader("📊 Data Preview")
+
+sample = {
+    "Date":["01/01/2026","02/01/2026","03/01/2026"],
+    "Description":["Transfer","Deposit","ATM"],
+    "Debit":[1000,0,500],
+    "Credit":[0,5000,0],
+    "Balance":[9000,14000,13500]
+}
+
+st.dataframe(sample,use_container_width=True)
+
+st.write("")
+
+st.download_button(
+    "⬇ Download Excel",
+    data=b"",
+    file_name="Statement.xlsx"
+)
 
 # ================= 1. ฟังก์ชันช่วยเหลือ (Utility) =================
 def split_channel_and_detail(text):
