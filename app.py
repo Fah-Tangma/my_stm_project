@@ -6,8 +6,37 @@ import pdfplumber
 import streamlit as st
 from pikepdf import PasswordError
 
-# ตั้งค่าหน้าเว็บ Streamlit
-st.set_page_config(page_title="PDF Statement Converter", layout="wide")
+# 1. ตั้งค่าหน้าเว็บ Streamlit
+st.set_page_config(
+    page_title="PDF Statement to Excel",
+    page_icon="📑",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ปรับแต่ง CSS เพื่อความสวยงาม
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #FF4B4B;
+        color: white;
+    }
+    .stDownloadButton>button {
+        width: 100%;
+        background-color: #28a745;
+        color: white;
+    }
+    .css-1r6slb0 {
+        padding: 2rem 1rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ================= 1. ฟังก์ชันช่วยเหลือ (Utility) =================
 def split_channel_and_detail(text):
