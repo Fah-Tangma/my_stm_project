@@ -127,7 +127,7 @@ st.title("📑 PDF to Excel Converter")
 st.write("อัปโหลดไฟล์ PDF Statement เพื่อแปลงเป็นไฟล์ Excel")
 
 with st.sidebar:
-    st.header("การตั้งค่า")
+    st.header("STM to Excel")
     pdf_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
     password = st.text_input("รหัสผ่านไฟล์ PDF (ถ้ามี)", type="password")
     convert_button = st.button("เริ่มการแปลงไฟล์")
