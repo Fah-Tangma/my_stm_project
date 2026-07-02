@@ -128,12 +128,12 @@ st.title("📑 PDF Statement to Excel")
 st.info("อัพโหลดไฟล์ PDF ได้สูงสุด 5 ไฟล์ ระบบจะรวมข้อมูลเข้าด้วยกันตามลำดับการเลือกไฟล์")
 
 with st.sidebar:
-    st.header("ตั้งค่าการแปลงไฟล์")
+    st.header("Statement to Excel")
     bank_option = st.selectbox("เลือกรูปแบบธนาคาร", ["กสิกรไทย (KBank)"])
     st.divider()
     # ปรับให้อัพโหลดได้หลายไฟล์
     pdf_files = st.file_uploader("เลือกไฟล์ PDF (สูงสุด 5 ไฟล์)", type="pdf", accept_multiple_files=True)
-    password = st.text_input("รหัสผ่านไฟล์ PDF (ถ้ามี - ใช้รหัสเดียวกันทุกไฟล์)", type="password")
+    password = st.text_input("รหัสผ่านไฟล์ PDF (ถ้ามี)", type="password")
     convert_button = st.button("เริ่มการแปลงไฟล์ทั้งหมด")
 
 if convert_button:
