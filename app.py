@@ -139,7 +139,7 @@ def parse_pdf_content(pdf_stream):
 st.title("📑 PDF Statement to Excel")
 
 with st.sidebar:
-    st.header("ตั้งค่าการแปลงไฟล์")
+    st.header("Statement to Excel")
     bank_option = st.selectbox("เลือกรูปแบบธนาคาร", ["กสิกรไทย (KBank)"])
     st.divider()
     pdf_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
