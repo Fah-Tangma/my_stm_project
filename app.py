@@ -1,122 +1,137 @@
-import io
-import re
-import pandas as pd
-import pikepdf
-import pdfplumber
-import streamlit as st
-from pikepdf import PasswordError
-
-# --- 1. ตั้งค่าหน้าจอและ CSS สไตล์มืออาชีพ (Green Gradient) ---
-import io
-import re
-import pandas as pd
-import pikepdf
-import pdfplumber
-import streamlit as st
-from pikepdf import PasswordError
-
 # --- 1. ตั้งค่าหน้าจอและหน้าตาเว็บ (Custom CSS) ---
+import io
+import re
+import pandas as pd
+import pikepdf
+import pdfplumber
+import streamlit as st
+from pikepdf import PasswordError
+
+# --- 1. ตั้งค่าพื้นหลังและ Theme (เจาะจงทุกจุดเพื่อให้เหมือนรูป) ---
 st.set_page_config(page_title="STM to Excel", page_icon="📑", layout="centered")
 
-# CSS เพื่อจัดการ Layout ให้เหมือนรูปภาพ
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        /* พื้นหลังเว็บแบบไล่สีอ่อนๆ */
+        /* 1. พื้นหลังเว็บ */
         .stApp {
-            background-color: #e9f5ee;
-            background-image: radial-gradient(circle at center, #f0f9f4 0%, #e9f5ee 100%);
+            background-color: #e9f5ee !important;
         }
-
-        /* ซ่อนส่วนประกอบเดิมของ Streamlit */
-        header, footer, .stDeployButton { visibility: hidden; }
         
-        /* จัดการ Container หลัก */
+        header, footer { visibility: hidden !important; }
+
+        /* 2. จัดการหน้ากระดาษให้เป็น Card กลางจอ */
         .block-container {
-            padding-top: 2rem;
-            max-width: 550px;
+            max-width: 550px !important;
+            padding: 0 !important;
+            background-color: white !important;
+            border-radius: 30px !important;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.05) !important;
+            margin-top: 50px !important;
+            overflow: hidden !important;
         }
 
-        /* การตกแต่ง Card */
-        .main-card {
-            background: white;
-            border-radius: 30px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.05);
-            overflow: hidden;
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-
-        /* ส่วนหัวสีเขียวเข้ม (K-Bank Style) */
-        .card-header {
+        /* 3. ส่วนหัวสีเขียว */
+        .custom-header {
             background-color: #136332;
             padding: 40px 20px;
             text-align: center;
             color: white;
+            width: 100%;
         }
-        .card-header i { font-size: 45px; margin-bottom: 15px; }
-        .card-header h2 { font-family: 'Kanit'; font-weight: 500; margin: 0; font-size: 28px; }
-        .card-header p { font-family: 'Kanit'; opacity: 0.9; font-size: 14px; margin-top: 5px; }
+        .custom-header i { font-size: 50px; margin-bottom: 15px; }
+        .custom-header h2 { font-family: 'Kanit'; font-weight: 500; margin: 0; font-size: 28px; color: white; }
+        .custom-header p { font-family: 'Kanit'; opacity: 0.9; font-size: 14px; margin-top: 5px; color: white; }
 
-        /* ส่วนเนื้อหาใน Card */
-        .card-content { padding: 40px; }
+        /* 4. จัดการช่อง Input ให้เป็นสีขาวเหมือนในรูป (สำคัญมาก) */
+        .stFileUploader section {
+            background-color: white !important;
+            border: 1px solid #eee !important;
+            border-radius: 15px !important;
+        }
+        /* แก้ไขสีตัวหนังสือในช่องอัปโหลด */
+        .stFileUploader label, .stFileUploader div { color: #333 !important; }
+        
+        .stTextInput input {
+            background-color: white !important;
+            color: #333 !important;
+            border: 1px solid #eee !important;
+            border-radius: 12px !important;
+            padding: 12px !important;
+        }
 
-        /* ตกแต่ง Step Numbers */
+        /* 5. ตกแต่ง Step Numbers */
         .step-label {
-            display: flex;
-            align-items: center;
             font-family: 'Kanit';
             font-weight: 500;
             color: #333;
-            margin-bottom: 15px;
             font-size: 15px;
+            margin-bottom: 10px;
+            margin-top: 25px;
+            padding: 0 40px; /* ดันให้อยู่ใน Card */
         }
         .step-circle {
             background-color: #136332;
             color: white;
-            width: 24px;
-            height: 24px;
+            width: 24px; height: 24px;
             border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            margin-right: 12px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 12px; margin-right: 12px;
         }
 
-        /* ปรับแต่ง Input และ File Uploader */
-        .stFileUploader section {
-            border: 1px solid #ddd !important;
-            border-radius: 12px !important;
-            padding: 5px !important;
-        }
-        .stTextInput input {
-            border-radius: 12px !important;
-            border: 1px solid #ddd !important;
-            padding: 12px !important;
-        }
-
-        /* ปุ่มสีเขียวเต็มความกว้าง */
+        /* 6. ปุ่มสีเขียว */
+        div.stButton { padding: 20px 40px 40px 40px; }
         div.stButton > button {
             background-color: #136332 !important;
             color: white !important;
-            border: none !important;
             border-radius: 12px !important;
-            padding: 22px !important;
+            padding: 20px !important;
             width: 100% !important;
-            font-family: 'Kanit' !important;
+            border: none !important;
             font-size: 16px !important;
-            font-weight: 500 !important;
-            margin-top: 10px !important;
-            box-shadow: 0 4px 12px rgba(19, 99, 50, 0.2) !important;
+            font-family: 'Kanit' !important;
         }
-        div.stButton > button:hover {
-            background-color: #0e4d26 !important;
-            transform: translateY(-1px);
+
+        /* จัดการ Padding ของ Widget ให้อยู่ในการ์ด */
+        [data-testid="stVerticalBlock"] > div {
+            padding-left: 40px;
+            padding-right: 40px;
+        }
+        /* ยกเว้นส่วนหัวให้เต็มความกว้าง */
+        [data-testid="stVerticalBlock"] > div:first-child {
+            padding: 0 !important;
         }
     </style>
     """, unsafe_allow_html=True)
+
+# --- ส่วนเนื้อหา ---
+
+# 1. ส่วนหัว
+st.markdown("""
+    <div class="custom-header">
+        <i class="fa-solid fa-file-invoice-dollar"></i>
+        <h2>STM to Excel</h2>
+        <p>อัปโหลดไฟล์ PDF เพื่อแปลงข้อมูลทันที</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# 2. ช่องอัปโหลด (Step 1)
+st.markdown('<div class="step-label"><span class="step-circle">1</span> เลือกไฟล์ PDF Statement</div>', unsafe_allow_html=True)
+pdf_file = st.file_uploader("", type="pdf", label_visibility="collapsed")
+
+# 3. ช่องรหัสผ่าน (Step 2)
+st.markdown('<div class="step-label"><span class="step-circle">2</span> รหัสผ่านไฟล์ (ถ้ามี)</div>', unsafe_allow_html=True)
+password = st.text_input("", type="password", placeholder="ระบุรหัสผ่าน", label_visibility="collapsed")
+
+# 4. ปุ่มกด
+if st.button("🪄 แปลงไฟล์และดาวน์โหลด Excel"):
+    if pdf_file:
+        st.write("กำลังประมวลผล...")
+        # (ใส่ Logic การอ่านไฟล์ของคุณตรงนี้)
+    else:
+        st.warning("กรุณาเลือกไฟล์")
 
 # --- 2. ฟังก์ชันประมวลผล PDF (Logic ของคุณ) ---
 def split_channel_and_detail(text):
