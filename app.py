@@ -8,51 +8,48 @@ from pikepdf import PasswordError
 
 # ================= 1. Configuration & Styling =================
 st.set_page_config(
-    page_title="PDF to Excel Converter",
+    page_title="Smart Statement Converter",
     page_icon="🏦",
     layout="wide"
 )
 
-# Custom CSS สำหรับปรับแต่งหน้าจอหลัก
+# Custom CSS สำหรับตกแต่ง UI
 st.markdown("""
     <style>
+    /* ปรับแต่งฟอนต์และสีพื้นหลัง */
     @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap');
     html, body, [class*="css"] {
         font-family: 'Sarabun', sans-serif;
     }
     .main {
-        background-color: #ffffff;
+        background-color: #f0f2f6;
     }
-    /* ปรับแต่งปุ่มแปลงไฟล์ */
-    div.stButton > button {
-        background-color: #007bff !important;
+    /* สไตล์ปุ่ม Download */
+    .stDownloadButton button {
+        background-color: #00c853 !important;
         color: white !important;
         width: 100%;
-        height: 3.5em;
         border-radius: 10px;
+        height: 50px;
+        font-weight: bold;
         font-size: 18px;
-        font-weight: bold;
-        transition: 0.3s;
-    }
-    div.stButton > button:hover {
-        background-color: #0056b3 !important;
         border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    /* ปรับแต่งปุ่มดาวน์โหลด */
-    div.stDownloadButton > button {
-        background-color: #28a745 !important;
+    /* สไตล์ปุ่ม Convert */
+    .stButton button {
+        background-color: #4A90E2 !important;
         color: white !important;
         width: 100%;
-        height: 3.5em;
         border-radius: 10px;
         font-weight: bold;
     }
-    /* หัวข้อหลัก */
-    .title-text {
-        color: #1a1a1a;
+    /* ตกแต่งส่วนหัวข้อ */
+    .header-text {
+        color: #1E3A8A;
+        font-weight: 700;
         text-align: center;
-        margin-top: -50px;
-        padding-bottom: 30px;
+        padding-bottom: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
