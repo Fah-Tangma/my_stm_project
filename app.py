@@ -237,7 +237,7 @@ if convert_button:
                         df['วันที่'] = pd.to_datetime(df['วันที่'], format='%d-%m-%y', errors='coerce')
                     else:
                         rows = parse_scb_pdf(unlocked_io)
-                        cols = ["วันที่", "เวลา", "Code", "ช่องทาง", "ยอดเงิน (ฝาก/ถอน)", "ยอดคงเหลือ", "รายละเอียด"]
+                        cols = ["วันที่", "เวลา", "Code", "ช่องทาง", "ถอนเงิน/ฝากเงิน", "ยอดคงเหลือ", "รายละเอียด"]
                         df = pd.DataFrame(rows, columns=cols)
                         df['วันที่'] = pd.to_datetime(df['วันที่'], dayfirst=True, errors='coerce')
                     all_dfs.append(df)
