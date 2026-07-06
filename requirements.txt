@@ -1,5 +1,6 @@
-streamlit
+google-genai
 pandas
 pikepdf
 pdfplumber
+streamlit
 xlsxwriter
