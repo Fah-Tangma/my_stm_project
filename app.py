@@ -25,7 +25,7 @@ def split_channel_and_detail(text):
         "Internet/Mobile KK", "K BIZ", "EDC", "โอนเข้าหักบัญชีอัตโนมัติ", "ATM", "CDM", 
         "BRANCH", "K-Cash Connect Plus" , "Internet/Mobile GSB", "Internet/Mobile SCB", 
         "Internet/Mobile KTB ", "Internet/Mobile TTB", "ตู้เติมเงิน / โมบาย แอปพลิชัน", "Internet/Mobile BAY", 
-        "Internet/Mobile BBL","Internet/Mobile BAAC", "สาขาถนนศรีสุริยวงศ์"
+        "Internet/Mobile BBL","Internet/Mobile BAAC", "สาขาถนนศรีสุริยวงศ์", "สาขาเซ็นทรัล ขอนแก่น"
     ]
     found_channel, detail_part = "-", text
     for c in channels:
@@ -41,10 +41,14 @@ def str_to_float(val_str):
     except: return None
 
 # ================= 2. Logic การอ่าน PDF (คงเดิม) =================
+import re
+import pdfplumber
+
 def parse_kbank_pdf(pdf_stream):
     all_parsed_rows = []
     bf_keywords = ["ยอดยกมา", "Balance Brought Forward", "Brought Forward"]
-    table_headers = ["เวลา/", "วันที่มีผล", "รายการ", "ถอนเงิน", "ฝากเงิน", "ยอดคงเหลือ"]
+    # ปรับ table_headers ให้เป็นคำที่เฉพาะเจาะจงขึ้น เพื่อไม่ให้ชนกับรายการ "ถอนเงินสด"
+    table_headers = ["เวลา/", "วันที่มีผล", "ถอนเงิน / ฝากเงิน", "ยอดคงเหลือ"]
 
     with pdfplumber.open(pdf_stream) as pdf_obj:
         for page in pdf_obj.pages:
@@ -57,31 +61,29 @@ def parse_kbank_pdf(pdf_stream):
                 line = line.strip()
                 if not line: continue
                 
-                if any(kw in line for kw in table_headers):
-                    is_in_table = True
-                    continue
-                
-                if not is_in_table or any(kw in line for kw in ["Total", "รวมทั้งสิ้น", "จบรายการ"]):
-                    is_in_table = False
-                    continue
-
+                # --- 1. เช็ค Pattern วันที่ก่อน (ถ้าเจอวันที่ แสดงว่าเป็นข้อมูลธุรกรรมแน่นอน ไม่ใช่หัวตาราง) ---
                 date_match = re.match(r'^(\d{2}-\d{2}-\d{2})', line)
                 
                 if date_match:
+                    is_in_table = True 
                     date = date_match.group(1)
                     time_match = re.search(r'(\d{2}:\d{2})', line)
                     time = time_match.group(1) if time_match else ""
+                    
+                    # หาตัวเลขจำนวนเงินทั้งหมดในบรรทัด
                     amounts = re.findall(r'[\d,]+\.\d{2}', line)
                     
                     temp_text = line.replace(date, "", 1).strip()
                     if time: temp_text = temp_text.replace(time, "", 1).strip()
                     
+                    # แยก Description: ตัดข้อความก่อนเจอตัวเลขชุดแรก
                     desc = temp_text.split(amounts[0])[0].strip() if amounts else temp_text
                     
                     amount_val, balance = None, None
                     if len(amounts) == 1:
                         balance = str_to_float(amounts[0])
                     elif len(amounts) >= 2:
+                        # แยกฝั่งเงินเข้า/ออก: เพิ่ม Keyword ให้ครอบคลุม
                         is_deposit = any(kw in desc for kw in ["รับเงิน", "คืนเงิน", "ฝาก", "เงินคืน", "Thai QR", "รับโอนเงิน"])
                         val = str_to_float(amounts[0])
                         amount_val = val if is_deposit else -val
@@ -89,18 +91,31 @@ def parse_kbank_pdf(pdf_stream):
 
                     remaining = ""
                     if amounts:
+                        # หาข้อความส่วนที่เหลือหลังยอดคงเหลือ
                         parts = line.split(amounts[-1])
                         if len(parts) > 1: remaining = parts[-1].strip()
                     
                     chan, det = split_channel_and_detail(remaining)
                     all_parsed_rows.append([date, time, desc, amount_val, balance, chan, det])
+                    continue # เมื่อเจอข้อมูลแล้ว ให้ข้ามไปบรรทัดถัดไปทันที (ไม่ลงไปเช็ค Header ด้านล่าง)
 
-                elif is_in_table:
+                # --- 2. เช็คว่าเป็นหัวตารางหรือไม่ (ถ้าไม่มีวันที่) ---
+                if any(kw in line for kw in table_headers):
+                    is_in_table = True
+                    continue
+                
+                # --- 3. เช็คบรรทัดจบรายการ ---
+                if any(kw in line for kw in ["Total", "รวมทั้งสิ้น", "จบรายการ"]):
+                    is_in_table = False
+                    continue
+
+                # --- 4. บรรทัดรายละเอียดเพิ่มเติม (ไม่มีวันที่ แต่อยู่ในตาราง) ---
+                if is_in_table:
                     if any(x in line for x in ["หน้า", "แผ่นที่", "ยอดคงเหลือ"]): continue
                     c_extra, d_extra = split_channel_and_detail(line)
                     all_parsed_rows.append(["", "", "", None, None, c_extra if c_extra != "-" else "", d_extra])
 
-    # --- กรองข้อมูลตามเงื่อนไข ---
+    # --- ส่วนของการกรองข้อมูล (คงโครงสร้างเดิมตามที่คุณต้องการ) ---
     temp_list_bf = []
     found_first_bf = False
     for row in all_parsed_rows:
@@ -121,14 +136,16 @@ def parse_kbank_pdf(pdf_stream):
         else:
             empty_block = []
             while i < n and temp_list_bf[i][3] is None:
+                # ถ้าเจอรายการยอดยกมาในบล็อกว่าง ให้เก็บไว้
                 if any(kw in str(temp_list_bf[i][2]) for kw in bf_keywords):
                     final_filtered_rows.append(temp_list_bf[i])
                     i += 1
                     continue
                 empty_block.append(temp_list_bf[i])
                 i += 1
-            if len(empty_block) == 1:
-                final_filtered_rows.append(empty_block[0])
+            # รวบรายละเอียดเสริม (ถ้ามีมากกว่า 1 บรรทัดก็ยังคงนำไปแสดงผล)
+            for item in empty_block:
+                final_filtered_rows.append(item)
             
     return final_filtered_rows
 
