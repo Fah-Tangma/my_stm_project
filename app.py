@@ -274,7 +274,7 @@ def parse_scb_pdf(pdf_stream):
 def parse_ktb_pdf(pdf_stream):
     all_raw_rows = []
     # รายการที่เป็น "เงินเข้า" (สำหรับรูปแบบ Personal)
-    deposit_codes = ['IORSDT', 'IIPS', 'DDSDT', 'CR', 'OTHDEP']
+    deposit_codes = ['IORSDT', 'IIPS', 'DDSDT', 'CR', 'OTHDEP', 'IIPS']
     # คำหลักสำหรับยอดยกมา
     bf_keywords = ["ยอดยกมา", "ยอดคงเหลือยกมา", "Balance Brought Forward", "Brought Forward"]
 
