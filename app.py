@@ -220,7 +220,9 @@ def parse_scb_pdf(pdf_stream):
         "เอกสารนี้ไม่จำเป็นต้องมีลายเซ็น", "จัดพิมพ์ผ่านระบบคอมพิวเตอร์",
         "สอบถามข้อมูลเพิ่มเติม", "02-722-2222", "Contact Center", "หน้าที่ (Page)", 
         "ช่องทาง", "เลขที่เช็ค", "ยอดเงินหักบัญชี", "ยอดเงินเข้าบัญชี", "รายการ (Items)",
-        "ลูกหนี้/เจ้าหนี้", "ยอดเงินคงเหลือ", "TOTAL AMOUNT", "เอกสารฉบับนี้", "TOTAL ITEMS", "This document"
+        "ลูกหนี้/เจ้าหนี้", "ยอดเงินคงเหลือ", "TOTAL AMOUNT", "เอกสารฉบับนี้", "TOTAL ITEMS", "This document",
+        "ธนาคารไทยพาณิชย์", "จำกัด", "(มหาชน)", "THE SIAM COMMERCIAL BANK PUBLIC COMPANY LIMITED", "สาขา", 
+        "ASAWANN SHOPPING COMPLEX", "ใบแจ้งรายการบัญชีออมทรัพย์", "ชื่อ - สกุล"
     ]
     pending_desc = ""
     with pdfplumber.open(pdf_stream) as pdf:
