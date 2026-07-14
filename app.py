@@ -561,112 +561,48 @@ def parse_ktb_pdf(pdf_stream):
     return final_filtered_rows
 
 # ===== 4.BBL =====
-def clean_thai_text(text):
-    if not text: return ""
-    text = unicodedata.normalize('NFKC', text)
-    # ลบช่องว่างกลางคำ
-    text = re.sub(r'(?<=[ก-ฮ])\s+(?=[ะ-ูเ-โ])', '', text)
-    text = re.sub(r'(?<=[ะ-ูเ-โ])\s+(?=[ก-ฮะ-์])', '', text)
-    # แก้คำซ้ำ Artifact
-    text = re.sub(r'([ก-ฮ][ะ-์])\1', r'\1', text) 
-    text = re.sub(r'([ก-ฮ]{2})\1', r'\1', text)
-
-    corrections = {
-        "เงนิ": "เงิน", "เงิ น": "เงิน", "บญั": "บัญ", "บญัชี": "บัญชี", "อตั": "อัต",
-        "โนมัตั ิ": "โนมัติ", "โนมตัิ": "โนมัติ", "โนมัติมัติ": "โนมัติ", "อตั โนมตั ิ": "อัตโนมัติ",
-        "ตดั": "ตัด", "ดดั": "ตัด", "ตัดเตั": "ตัด", "เช็คอตั": "เช็คอัต", "ธรรมเน ยีม": "ธรรมเนียม",
-        "คา่": "ค่า", "ไม่ผ่ าน": "ไม่ผ่าน", "ไม่ผ่ม่ าน": "ไม่ผ่าน", "ผ่ าน": "ผ่าน", "ผ่ม่ าน": "ผ่าน",
-        "สะสมทรัพรั": "สะสมทรัพย์", "ทรัพรั ย์": "ทรัพย์", "ทรัพย": "ทรัพย์", "ปรบั": "ปรับ", "ปรับปรั รุง": "ปรับปรุง",
-        "เป็ น": "เป็น", "ผ่ น": "ผ่าน", "ทํารายการ": "ทำรายการ", "ทีทำ": "ที่ทำ", "ทีมี": "ที่มี",
-        "ไมผ่ า่ น": "ไม่ผ่าน", "ผา่ น": "ผ่าน", "ค่า ธรรมเนียม": "ค่าธรรมเนียม","ไม่ผ่านเป็น ผ่าน": "ไม่ผ่านเป็นผ่าน",
-        "เป็น ": "เป็น",
-        "ทรพัย์": "ทรัพย์"
-    }
-    for wrong, right in corrections.items():
-        text = text.replace(wrong, right)
-    return re.sub(r'\s+', ' ', text).strip()
-
-def thai_date_to_eng(thai_date_str):
-    months = {"ม.ค.": "01", "ก.พ.": "02", "มี.ค.": "03", "เม.ย.": "04", "พ.ค.": "05", "มิ.ย.": "06",
-              "ก.ค.": "07", "ส.ค.": "08", "ก.ย.": "09", "ต.ค.": "10", "พ.ย.": "11", "ธ.ค.": "12"}
+def process_bbl_with_gemini(file_bytes, password):
+    """ฟังก์ชันจัดการไฟล์ BBL ด้วย Gemini AI พร้อมแปลงวันที่เป็นตัวเลข"""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    unlocked_bytes = file_bytes
     try:
-        parts = thai_date_str.split()
-        if len(parts) == 3:
-            d, m, y = parts[0].zfill(2), months.get(parts[1], "01"), str(int(parts[2]) - 543)
-            return f"{d}/{m}/{y}"
-    except: return None
+        with pikepdf.open(io.BytesIO(file_bytes), password=password) as pdf:
+            out_pdf = io.BytesIO()
+            pdf.save(out_pdf)
+            unlocked_bytes = out_pdf.getvalue()
+    except:
+        pass
 
-def str_to_float(val):
-    if not val: return 0.0
+    model_name = "gemini-2.5-flash" 
+    prompt = """
+    คุณคือ OCR ผู้เชี่ยวชาญด้านบัญชี โปรดอ่านสเตทเมนท์ธนาคารกรุงเทพ (BBL) นี้
+    และคืนค่าเป็น JSON Array ของ Array เท่านั้น โดยมีลำดับคอลัมน์ดังนี้:
+    [["วันที่ทำรายการ", "เวลา", "วันที่มีผล", "รายละเอียด", "เลขที่เช็ค", "จำนวนเงิน", "ยอดคงเหลือ", "ช่องทาง"]]
+
+    กฎเหล็ก:
+    1. **วันที่**: ให้แปลงวันที่จากรูปแบบ '26 มิ.ย. 2569' เป็น '26/06/2026' (ค.ศ.) เสมอ 
+       - ใช้เกณฑ์: ม.ค.=01, ก.พ.=02, มี.ค.=03, เม.ย.=04, พ.ค.=05, มิ.ย.=06, ก.ค.=07, ส.ค.=08, ก.ย.=09, ต.ค.=10, พ.ย.=11, ธ.ค.=12
+       - ปี พ.ศ. 2569 ให้แปลงเป็น ค.ศ. 2026
+    2. **เติมวันที่ให้ครบ**: แม้ใน PDF วันที่ทำรายการจะเขียนไว้บรรทัดเดียวสำหรับหลายรายการ แต่ใน JSON ต้องใส่ข้อมูลวันที่ให้ครบทุกแถว (ห้ามเป็นค่าว่าง)
+    3. **จำนวนเงิน**: ช่อง 'หักบัญชี' ให้ติดลบ, ช่อง 'เข้าบัญชี' ให้เป็นบวก
+    4. **รายละเอียด**: รวมข้อความคำอธิบายทั้งหมดให้อยู่ในบรรทัดเดียวกัน
+    5. คืนค่าเฉพาะ JSON ห้ามมีคำอธิบายอื่น
+    """
     try:
-        if isinstance(val, str):
-            val = val.replace(',', '')
-        return float(val)
-    except: return 0.0
-
-# ================= 2. Logic การอ่านไฟล์ BBL =================
-
-def parse_bbl_pdf(pdf_stream):
-    all_rows = []
-    date_pattern = r'(\d{1,2}\s+(?:ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s+\d{4})'
-    time_pattern = r'(\d{2}:\d{2})'
-    
-    with pdfplumber.open(pdf_stream) as pdf:
-        for page in pdf.pages:
-            lines = page.extract_text(x_tolerance=2, y_tolerance=2).split('\n')
-            for i, line in enumerate(lines):
-                line = line.strip()
-                date_matches = re.findall(date_pattern, line)
-                if not date_matches: continue
-                if any(k in line for k in ["สรุปยอด", "รายการเคลื่อนไหว", "เลขที่บัญชี", "ยอดยกมา"]): continue
-
-                time_val, extra_desc = "", ""
-                time_in_line = re.search(time_pattern, line)
-                if time_in_line: time_val = time_in_line.group(1)
-                
-                # อ่านบรรทัดถัดไปกรณีเวลาอยู่คนละบรรทัด
-                if i + 1 < len(lines):
-                    next_line = lines[i+1].strip()
-                    time_match_next = re.search(r'^(\d{2}:\d{2})', next_line)
-                    if time_match_next:
-                        time_val = time_match_next.group(1)
-                        extra_desc = next_line.replace(time_val, "").strip()
-
-                amounts = re.findall(r'[\d,]+\.\d{2}', line)
-                if not amounts: continue
-                
-                cheque_no = ""
-                cheque_match = re.search(r'\b(\d{7,8})\b', line)
-                if cheque_match: cheque_no = cheque_match.group(1)
-
-                channel = ""
-                chan_match = re.search(r'\b(BR\d+|DR\d+|AUTO|TELE|M-BANKING|INTERNET)\b', line)
-                if chan_match: channel = chan_match.group(1)
-
-                # ล้าง Text เพื่อเอาแค่ Description
-                temp_desc = line
-                for d_raw in date_matches: temp_desc = temp_desc.replace(d_raw, "")
-                for amt in amounts: temp_desc = temp_desc.replace(amt, "")
-                if channel: temp_desc = temp_desc.replace(channel, "")
-                if cheque_no: temp_desc = temp_desc.replace(cheque_no, "")
-
-                full_desc = clean_thai_text(temp_desc + " " + extra_desc)
-                balance = str_to_float(amounts[-1])
-                
-                transaction_amount = 0.0
-                if len(amounts) >= 2:
-                    val = str_to_float(amounts[-2])
-                    # แยกฝาก/ถอน
-                    if any(word in full_desc for word in ["ฝาก", "เข้า", "รับโอน", "คืน", "ดอกเบี้ย"]):
-                        transaction_amount = val
-                    else:
-                        transaction_amount = -val
-
-                date_trans = thai_date_to_eng(date_matches[0])
-                date_eff = thai_date_to_eng(date_matches[1]) if len(date_matches) > 1 else date_trans
-                
-                all_rows.append([date_trans, time_val, date_eff, full_desc, cheque_no, transaction_amount, balance, channel])
-    return all_rows
+        response = client.models.generate_content(
+            model=model_name,
+            contents=[types.Part.from_bytes(data=unlocked_bytes, mime_type="application/pdf"), prompt],
+            config=types.GenerateContentConfig(response_mime_type='application/json'),
+        )
+        res_text = response.text.strip()
+        if res_text.startswith("```"):
+            res_text = res_text.replace("```json", "").replace("```", "").strip()
+        
+        data = json.loads(res_text)
+        return data
+    except Exception as e:
+        st.error(f"Gemini Error (BBL): {str(e)}")
+        return None
 
 # ================= 4. Streamlit UI & Logic =================
 st.title("📑 PDF Statement to Excel")
@@ -689,16 +625,55 @@ if convert_button:
             for i, uploaded_file in enumerate(pdf_files):
                 status_placeholder.write(f"⏳ กำลังประมวลผล: {uploaded_file.name}...")
                 pdf_bytes = uploaded_file.read()
-                
-                # --- กรณี BAY (AI) ---
+                df = None  # กำหนดค่าเริ่มต้นเพื่อป้องกัน Error 'df' is not defined
+
+                # --- 1. กลุ่มธนาคารที่ใช้ AI (BAY และ BBL) ---
                 if bank_option == "กรุงศรี (BAY)":
                     data_rows = process_bay_with_gemini(pdf_bytes, password)
                     if data_rows:
                         df = pd.DataFrame(data_rows, columns=["วันที่", "เวลา", "ถอนเงิน/ฝากเงิน", "ยอดคงเหลือ", "รหัส", "รายละเอียด", "ช่องทาง", "รหัสสาขา"])
                         df['วันที่'] = pd.to_datetime(df['วันที่'], dayfirst=True, errors='coerce')
-                        all_dfs.append(df)
+                # --- ในส่วนของ elif bank_option == "กรุงเทพ (BBL)": ---
+                elif bank_option == "กรุงเทพ (BBL)":
+                    data_rows = process_bbl_with_gemini(pdf_bytes, password)
+                    if data_rows:
+                        # 1. สร้าง DataFrame และเก็บลำดับแถวเดิมจาก PDF ไว้ (สำคัญมาก)
+                        df = pd.DataFrame(data_rows, columns=["วันที่ทํารายการ", "เวลา", "วันที่มีผล", "รายละเอียด", "เลขที่เช็ค", "ถอนเงิน/ฝากเงิน", "ยอดคงเหลือ", "ช่องทาง"])
+                        
+                        # เก็บตำแหน่งเดิมไว้ (PDF ให้ ใหม่ -> เก่า ดังนั้นแถวเลขมากคือรายการที่เกิดก่อน)
+                        df['pdf_order'] = df.index 
                 
-                # --- กรณีธนาคารอื่นๆ (Rule-based) ---
+                        # 2. ลบแถวหัวตารางขยะ
+                        df = df[df['เวลา'] != 'เวลา'] 
+                
+                        # 3. จัดการตัวเลข (ลบคอมมาและแปลงเป็น Numeric)
+                        for col in ['ถอนเงิน/ฝากเงิน', 'ยอดคงเหลือ']:
+                            df[col] = df[col].astype(str).str.replace(',', '')
+                            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                
+                        # 4. จัดการวันที่ (เติมค่าว่าง ffill)
+                        df['วันที่'] = df['วันที่'].replace(r'^\s*$', pd.NA, regex=True).ffill()
+                        
+                        # สร้างคอลัมน์สำหรับเรียงลำดับตามวันและเวลา
+                        df['datetime_sort'] = pd.to_datetime(df['วันที่'] + ' ' + df['เวลา'], dayfirst=True, errors='coerce')
+                
+                        # 5. *** จุดสำคัญ: เรียงลำดับจากล่างขึ้นบน แม้เวลาจะเท่ากัน ***
+                        # เราจะเรียงตาม:
+                        #   - datetime_sort (จากน้อยไปมาก: วันเก่าไปวันใหม่)
+                        #   - pdf_order (จากมากไปน้อย: เพราะใน PDF รายการล่างสุดคือรายการแรกของเวลานั้นๆ)
+                        df = df.sort_values(
+                            by=['datetime_sort', 'pdf_order'], 
+                            ascending=[True, False]
+                        ).reset_index(drop=True)
+                
+                        # 6. ลบคอลัมน์ช่วยเรียงทิ้ง
+                        df = df.drop(columns=['pdf_order', 'datetime_sort'])
+                
+                        # 7. แปลงวันที่กลับเป็นรูปแบบ DD/MM/YYYY สำหรับ Excel
+                        df['วันที่'] = pd.to_datetime(df['วันที่'], dayfirst=True).dt.strftime('%d/%m/%Y')
+                        df['วันที่มีผล'] = pd.to_datetime(df['วันที่มีผล'], dayfirst=True).dt.strftime('%d/%m/%Y')                         
+                        
+                # --- 2. กลุ่มธนาคารอื่นๆ (Rule-based) ห้ามยุ่งส่วนประมวลผลเดิม ---
                 else:
                     with pikepdf.open(io.BytesIO(pdf_bytes), password=password) as pdf:
                         unlocked_io = io.BytesIO()
@@ -720,80 +695,51 @@ if convert_button:
                             df = pd.DataFrame(rows, columns=["วันที่", "เวลา", "รายการ", "รายละเอียด", "ถอนเงิน/ฝากเงิน", "ภาษี", "ยอดคงเหลือ", "สาขา"])
                             df['วันที่'] = pd.to_datetime(df['วันที่'], dayfirst=True, errors='coerce')
                         
-                        elif bank_option == "กรุงเทพ (BBL)":
-                            rows = parse_bbl_pdf(unlocked_io)
-                            rows.reverse() 
-                            df = pd.DataFrame(rows, columns=["วันที่", "เวลา", "วันที่ที่มีผล", "รายละเอียด", "เลขที่เช็ค", "ถอนเงิน/ฝากเงิน", "ยอดคงเหลือ", "ช่องทาง"])
-                            df['วันที่'] = pd.to_datetime(df['วันที่'], format='%d/%m/%Y', errors='coerce')
-                        
                         elif bank_option == "ยูโอบี (UOB)":
                             raw_uob = parse_uob_pdf(unlocked_io)
-                            # สร้างข้อมูลตามหัวตารางที่กำหนด
                             uob_data = [[
                                 r["st_date"], r["val_date"], r["tx_date"], 
                                 r["tx_time"], clean_description(r["desc"]), 
                                 (r["deposit"] - r["withdrawal"]), r["balance"]
                             ] for r in raw_uob]
-                            
-                            df = pd.DataFrame(uob_data, columns=[
-                                "Statement Date", "Value Date", "Transaction Date", 
-                                "Transaction Time", "Description", "Deposit/Withdrawal", "Balance"
-                            ])
-                            # แปลงวันที่สำหรับ UOB
+                            df = pd.DataFrame(uob_data, columns=["Statement Date", "Value Date", "Transaction Date", "Transaction Time", "Description", "Deposit/Withdrawal", "Balance"])
                             df['Statement Date'] = pd.to_datetime(df['Statement Date'], format='%d/%m/%Y', errors='coerce')
                             df['Value Date'] = pd.to_datetime(df['Value Date'], format='%d/%m/%Y', errors='coerce')
                             df['Transaction Date'] = pd.to_datetime(df['Transaction Date'], format='%d/%m/%Y', errors='coerce')
-                        
-                        all_dfs.append(df)
+
+                # ตรวจสอบว่า df ถูกสร้างสำเร็จหรือไม่ก่อน append
+                if df is not None:
+                    all_dfs.append(df)
 
             if all_dfs:
                 final_df = pd.concat(all_dfs, ignore_index=True)
                 st.dataframe(final_df, use_container_width=True)
 
-                # --- Export Excel ---
+                # --- ส่วน Export Excel (โค้ดส่วนนี้เหมือนเดิมทุกประการ) ---
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter', datetime_format='m/d/yyyy') as writer:
                     final_df.to_excel(writer, index=False, sheet_name='Statement')
                     workbook = writer.book
                     worksheet = writer.sheets['Statement']
-
-                    # สีตามธนาคาร
-                    colors = {
-                        "กสิกรไทย (KBank)": '#00A950', 
-                        "ไทยพาณิชย์ (SCB)": '#4E2E7F', 
-                        "กรุงไทย (KTB)": '#00A1E0', 
-                        "กรุงศรี (BAY)": '#FFCC00', 
-                        "กรุงเทพ (BBL)": '#0A22A8', 
-                        "ยูโอบี (UOB)": '#003399'
-                    }
+                    
+                    colors = {"กสิกรไทย (KBank)": '#00A950', "ไทยพาณิชย์ (SCB)": '#4E2E7F', "กรุงไทย (KTB)": '#00A1E0', "กรุงศรี (BAY)": '#FFCC00', "กรุงเทพ (BBL)": '#0A22A8', "ยูโอบี (UOB)": '#003399'}
                     h_color = colors.get(bank_option, '#333333')
-                    # กำหนดสีฟอนต์ (BAY ใช้สีดำ, อื่นๆ ใช้สีขาว)
                     f_color = 'black' if bank_option == "กรุงศรี (BAY)" else 'white'
                     
                     header_fmt = workbook.add_format({'bold': True, 'bg_color': h_color, 'font_color': f_color, 'align': 'center', 'border': 1})
                     num_fmt = workbook.add_format({'num_format': '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)', 'align': 'right', 'valign': 'vcenter'})
                     date_fmt = workbook.add_format({'num_format': 'm/d/yyyy', 'align': 'left'})
                     
-                    # เขียน Header
                     for col_num, value in enumerate(final_df.columns.values):
                         worksheet.write(0, col_num, value, header_fmt)
-                    
                     worksheet.set_column('A:Z', 18)
-                    
-                    # จัด Format วันที่ (คอลัมน์ที่มีคำว่า Date หรือ วันที่)
                     for idx, col_name in enumerate(final_df.columns):
-                        if "Date" in col_name or "วันที่" in col_name:
-                            worksheet.set_column(idx, idx, 15, date_fmt)
-                        # จัด Format ตัวเลข
+                        if "Date" in col_name or "วันที่" in col_name: worksheet.set_column(idx, idx, 15, date_fmt)
                         if any(kw in col_name for kw in ["ถอนเงิน", "ฝากเงิน", "ยอดคงเหลือ", "จำนวนเงิน", "ภาษี", "Deposit/Withdrawal", "Balance"]):
                             worksheet.set_column(idx, idx, 15, num_fmt)
 
                 output.seek(0)
-                st.download_button(
-                    label="📥 ดาวน์โหลดไฟล์ Excel", 
-                    data=output, 
-                    file_name=f"Statement_{bank_option}_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                )
+                st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel", data=output, file_name=f"Statement_{bank_option}_{datetime.now().strftime('%Y%m%d')}.xlsx")
                 status_placeholder.success("✅ แปลงไฟล์สำเร็จ!")
 
         except PasswordError:
